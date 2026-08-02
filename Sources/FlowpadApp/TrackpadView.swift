@@ -176,11 +176,14 @@ private struct GestureBindingRow: View {
                 Text(binding.action.kindTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Text(binding.action.detailTitle)
                     .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .frame(width: 170, height: 46, alignment: .trailing)
             .background(Capsule().fill(Color.white.opacity(0.055)))
 
             Menu {

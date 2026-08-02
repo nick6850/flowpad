@@ -29,20 +29,27 @@ struct SettingsView: View {
         VStack(spacing: 16) {
             SurfaceCard {
                 SettingsSection(title: "General", symbol: "switch.2") {
-                    settingToggle("Enable gestures", value: Binding(
-                        get: { model.settings.gesturesEnabled },
-                        set: { value in model.updateSettings { $0.gesturesEnabled = value } }
-                    ))
-                    Divider()
-                    settingToggle("Launch at login", value: Binding(
-                        get: { model.settings.launchAtLogin },
-                        set: { value in model.updateSettings { $0.launchAtLogin = value } }
-                    ))
-                    Divider()
-                    settingToggle("Show in menu bar", value: Binding(
-                        get: { model.settings.showMenuBarIcon },
-                        set: { value in model.updateSettings { $0.showMenuBarIcon = value } }
-                    ))
+                    HStack(spacing: 0) {
+                        settingToggle("Enable gestures", value: Binding(
+                            get: { model.settings.gesturesEnabled },
+                            set: { value in model.updateSettings { $0.gesturesEnabled = value } }
+                        ))
+
+                        verticalDivider
+
+                        settingToggle("Launch at login", value: Binding(
+                            get: { model.settings.launchAtLogin },
+                            set: { value in model.updateSettings { $0.launchAtLogin = value } }
+                        ))
+
+                        verticalDivider
+
+                        settingToggle("Show in menu bar", value: Binding(
+                            get: { model.settings.showMenuBarIcon },
+                            set: { value in model.updateSettings { $0.showMenuBarIcon = value } }
+                        ))
+                    }
+                    .padding(.top, 5)
                 }
             }
 
@@ -86,6 +93,13 @@ struct SettingsView: View {
     private func settingToggle(_ title: String, value: Binding<Bool>) -> some View {
         Toggle(title, isOn: value)
             .toggleStyle(.switch)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+    }
+
+    private var verticalDivider: some View {
+        Divider()
+            .frame(height: 38)
     }
 
     private func sensitivityControl(_ title: String, value: Binding<Sensitivity>) -> some View {
