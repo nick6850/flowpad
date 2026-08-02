@@ -1,5 +1,4 @@
 import AppKit
-import CoreServices
 import SwiftUI
 
 @main
@@ -35,17 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observer: NSObjectProtocol?
     private var dockObserver: NSObjectProtocol?
     private var fallbackWindow: NSWindow?
-    private var launchingSilently = false
 
     override init() {
         super.init()
         Self.current = self
-    }
-
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        launchingSilently = Self.isLoginItemLaunch(
-            event: NSAppleEventManager.shared().currentAppleEvent
-        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -71,19 +63,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        launchingSilently = launchingSilently || Self.isLoginItemLaunch(
-            event: NSAppleEventManager.shared().currentAppleEvent
-        )
-        updateActivationPolicy(activate: !launchingSilently)
+        // Do not force a window or activate the app here. WindowGroup opens on
+        // an ordinary user launch, while SMAppService.mainApp can start the
+        // engine and menu bar silently at login.
+        updateActivationPolicy(activate: false)
         AppModel.shared.start()
         updateStatusItem()
-        DispatchQueue.main.async { [launchingSilently] in
-            if launchingSilently {
-                NSApp.windows.forEach { $0.orderOut(nil) }
-            } else {
-                Self.openMainWindow()
-            }
-        }
         observer = NotificationCenter.default.addObserver(
             forName: .flowpadMenuBarVisibilityChanged,
             object: nil,
@@ -109,14 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         Self.openMainWindow()
         return true
-    }
-
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        !launchingSilently
-    }
-
-    nonisolated static func isLoginItemLaunch(event: NSAppleEventDescriptor?) -> Bool {
-        event?.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsLogInItem)) != nil
     }
 
     static func openMainWindow() {
