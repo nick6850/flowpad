@@ -97,7 +97,7 @@ struct TrackpadView: View {
 
     private var bindingList: some View {
         ScrollView {
-            LazyVStack(spacing: 14) {
+            VStack(spacing: 14) {
                 ForEach(GestureCategory.allCases) { category in
                     let items = filteredBindings.filter { GestureCatalog.byID[$0.gestureID]?.category == category }
                     if !items.isEmpty {
