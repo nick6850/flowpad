@@ -412,6 +412,9 @@ final class GestureEngine: @unchecked Sendable {
         if requireTapCompletion, currentIDs.contains(added.key) { return nil }
         let lifetime = contactLifetime(added.key, session)
         guard lifetime <= 0.38, delta.magnitude <= tapStillnessThreshold else { return nil }
+        if let corner = corner(for: addedStart), corner == .topLeft || corner == .topRight {
+            return .restOneCornerTap(corner)
+        }
         let near = abs(addedStart.x - baseAtAdd.x) < 0.18
         return .restOneTap(side: side, near: near)
     }

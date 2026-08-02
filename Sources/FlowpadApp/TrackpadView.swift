@@ -81,7 +81,7 @@ struct TrackpadView: View {
                 Text(searchText.isEmpty ? "No gestures configured" : "No matching bindings")
                     .font(.title3.weight(.semibold))
                 Text(searchText.isEmpty
-                     ? "Choose from all 61 supported trackpad gestures."
+                     ? "Choose from all \(GestureCatalog.all.count) supported trackpad gestures."
                      : "Try another search term.")
                     .foregroundStyle(.secondary)
                 if searchText.isEmpty {

@@ -4,7 +4,7 @@ Flowpad is a native macOS utility for assigning keyboard shortcuts or applicatio
 
 ## Features
 
-- 61 gesture definitions across one to five fingers and Force Touch.
+- 63 gesture definitions across one to five fingers and Force Touch.
 - Two action types: keyboard shortcut and launch application.
 - Searchable gesture library and grouped active bindings.
 - Versioned, atomic JSON persistence with backups and per-record quarantine.

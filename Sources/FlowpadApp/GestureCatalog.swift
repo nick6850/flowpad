@@ -12,6 +12,8 @@ enum GestureCatalog {
         .init(id: .oneBottomRightClick, title: "Click bottom-right corner", category: .oneFinger, pattern: .cornerClick(.bottomRight), symbol: "cursorarrow.click.2"),
 
         .init(id: .twoLeftEdgeSwipe, title: "Swipe two from left edge", category: .twoFinger, pattern: .edgeSwipeLeft, symbol: "arrow.right.to.line"),
+        .init(id: .onePlusTopLeft, title: "Rest one, tap top-left corner", category: .twoFinger, pattern: .restOneCornerTap(.topLeft), symbol: "arrow.up.left.circle"),
+        .init(id: .onePlusTopRight, title: "Rest one, tap top-right corner", category: .twoFinger, pattern: .restOneCornerTap(.topRight), symbol: "arrow.up.right.circle"),
         .init(id: .onePlusLeft, title: "Rest one, tap left", category: .twoFinger, pattern: .restOneTap(side: .left, near: false), symbol: "hand.tap"),
         .init(id: .onePlusRight, title: "Rest one, tap right", category: .twoFinger, pattern: .restOneTap(side: .right, near: false), symbol: "hand.tap"),
         .init(id: .onePlusLeftNear, title: "Rest one, tap near left", category: .twoFinger, pattern: .restOneTap(side: .left, near: true), symbol: "hand.tap"),

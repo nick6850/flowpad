@@ -13,13 +13,13 @@ enum SelfTestError: LocalizedError {
 
 enum SelfTest {
     static func run() throws {
-        try require(GestureCatalog.all.count == 61, "catalog must contain 61 gestures")
-        try require(Set(GestureCatalog.all.map(\.id)).count == 61, "gesture IDs must be unique")
-        try require(Set(GestureCatalog.all.map(\.pattern)).count == 61, "gesture patterns must be unique")
+        try require(GestureCatalog.all.count == 63, "catalog must contain 63 gestures")
+        try require(Set(GestureCatalog.all.map(\.id)).count == 63, "gesture IDs must be unique")
+        try require(Set(GestureCatalog.all.map(\.pattern)).count == 63, "gesture patterns must be unique")
 
         let expectedCounts: [GestureCategory: Int] = [
             .oneFinger: 8,
-            .twoFinger: 9,
+            .twoFinger: 11,
             .threeFinger: 18,
             .fourFinger: 13,
             .fiveFinger: 6,
@@ -439,6 +439,16 @@ enum SelfTest {
                 frame(0, start),
                 frame(0.03, shifted(start, dx: 0.025, dy: 0)),
                 frame(0.07, shifted(start, dx: 0.09, dy: 0))
+            ])
+
+        case let .restOneCornerTap(corner):
+            let base = contact(1, 0.50, 0.46)
+            let position = cornerPosition(corner)
+            return GestureEngine.classifyLiveForTesting(frames: [
+                frame(0, [base]),
+                frame(0.10, [base, contact(2, position.x, position.y)]),
+                frame(0.17, [base, contact(2, position.x + 0.001, position.y)]),
+                frame(0.20, [base])
             ])
 
         case let .restOneTap(side, near):

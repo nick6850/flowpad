@@ -43,6 +43,7 @@ enum GesturePattern: Hashable, Codable {
     case cornerTap(GestureCorner)
     case cornerClick(GestureCorner)
     case edgeSwipeLeft
+    case restOneCornerTap(GestureCorner)
     case restOneTap(side: GestureSide, near: Bool)
     case restOneSwipe(side: GestureSide, direction: GestureDirection)
     case multiClick(count: Int)
@@ -59,6 +60,7 @@ enum GestureID: String, Codable, CaseIterable, Identifiable {
     case oneTopLeftTap, oneTopRightTap, oneBottomLeftTap, oneBottomRightTap
     case oneTopLeftClick, oneTopRightClick, oneBottomLeftClick, oneBottomRightClick
     case twoLeftEdgeSwipe
+    case onePlusTopLeft, onePlusTopRight
     case onePlusLeft, onePlusRight, onePlusLeftNear, onePlusRightNear
     case onePlusSwipeDownLeft, onePlusSwipeUpLeft, onePlusSwipeDownRight, onePlusSwipeUpRight
     case threeClick, threeTap, twoPlusCenter, twoPlusLeft, twoPlusRight
