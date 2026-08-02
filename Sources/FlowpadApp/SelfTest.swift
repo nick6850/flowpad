@@ -1,5 +1,7 @@
 import Foundation
 import CoreGraphics
+import AppKit
+import CoreServices
 
 enum SelfTestError: LocalizedError {
     case failed(String)
@@ -34,6 +36,7 @@ enum SelfTest {
 
         try testConfigurationRoundTrip()
         try testLegacySettingsMigration()
+        try testLoginLaunchDetection()
         try testLegacySystemActionMigration()
         try testMalformedBindingIsolation()
         try testKeyboardEventPlan()
@@ -129,6 +132,22 @@ enum SelfTest {
         try require(loaded.settings.launchAtLogin, "legacy launch-at-login setting was lost")
         try require(loaded.settings.touchPrecision == .high, "legacy recognition setting was lost")
         try require(loaded.settings.swipeSensitivity == .low, "legacy swipe setting was lost")
+    }
+
+    private static func testLoginLaunchDetection() throws {
+        try require(
+            !AppDelegate.isLoginItemLaunch(event: nil),
+            "ordinary launch was mistaken for a login-item launch"
+        )
+        let event = NSAppleEventDescriptor.record()
+        event.setParam(
+            NSAppleEventDescriptor(boolean: true),
+            forKeyword: AEKeyword(keyAELaunchedAsLogInItem)
+        )
+        try require(
+            AppDelegate.isLoginItemLaunch(event: event),
+            "login-item Apple Event was not detected"
+        )
     }
 
     private static func testMalformedBindingIsolation() throws {

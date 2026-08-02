@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import SwiftUI
 
 @main
@@ -34,10 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observer: NSObjectProtocol?
     private var dockObserver: NSObjectProtocol?
     private var fallbackWindow: NSWindow?
+    private var launchingSilently = false
 
     override init() {
         super.init()
         Self.current = self
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchingSilently = Self.isLoginItemLaunch(
+            event: NSAppleEventManager.shared().currentAppleEvent
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -63,11 +71,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        updateActivationPolicy()
+        launchingSilently = launchingSilently || Self.isLoginItemLaunch(
+            event: NSAppleEventManager.shared().currentAppleEvent
+        )
+        updateActivationPolicy(activate: !launchingSilently)
         AppModel.shared.start()
         updateStatusItem()
-        DispatchQueue.main.async {
-            Self.openMainWindow()
+        DispatchQueue.main.async { [launchingSilently] in
+            if launchingSilently {
+                NSApp.windows.forEach { $0.orderOut(nil) }
+            } else {
+                Self.openMainWindow()
+            }
         }
         observer = NotificationCenter.default.addObserver(
             forName: .flowpadMenuBarVisibilityChanged,
@@ -94,6 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         Self.openMainWindow()
         return true
+    }
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        !launchingSilently
+    }
+
+    nonisolated static func isLoginItemLaunch(event: NSAppleEventDescriptor?) -> Bool {
+        event?.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsLogInItem)) != nil
     }
 
     static func openMainWindow() {
@@ -155,10 +178,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func updateActivationPolicy() {
+    private func updateActivationPolicy(activate: Bool = true) {
         let showDockIcon = AppModel.shared.settings.showDockIcon
         NSApp.setActivationPolicy(showDockIcon ? .regular : .accessory)
-        if showDockIcon {
+        if showDockIcon, activate {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
