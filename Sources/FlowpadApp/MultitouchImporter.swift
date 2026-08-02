@@ -130,14 +130,23 @@ enum MultitouchImporter {
 
 enum ShortcutText {
     static func display(keyCode: UInt16, flags: CGEventFlags) -> String {
+        var pieces = modifierPieces(flags)
+        pieces.append(keyName(keyCode))
+        return pieces.joined(separator: " ")
+    }
+
+    static func displayModifiers(_ flags: CGEventFlags) -> String {
+        modifierPieces(flags).joined(separator: " ")
+    }
+
+    private static func modifierPieces(_ flags: CGEventFlags) -> [String] {
         var pieces: [String] = []
         if flags.contains(.maskControl) { pieces.append("⌃") }
         if flags.contains(.maskAlternate) { pieces.append("⌥") }
         if flags.contains(.maskShift) { pieces.append("⇧") }
         if flags.contains(.maskCommand) { pieces.append("⌘") }
         if flags.contains(.maskSecondaryFn) { pieces.append("fn") }
-        pieces.append(keyName(keyCode))
-        return pieces.joined(separator: " ")
+        return pieces
     }
 
     private static func keyName(_ keyCode: UInt16) -> String {

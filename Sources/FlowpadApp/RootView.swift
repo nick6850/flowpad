@@ -69,15 +69,17 @@ struct RootView: View {
 
             Spacer()
 
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(model.engineAvailable ? Color.green : Color.orange)
-                    .frame(width: 8, height: 8)
-                Text(model.engineStatus)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if !model.engineAvailable {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 8, height: 8)
+                    Text(model.engineStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .help(model.engineStatus)
             }
-            .help(model.engineStatus)
         }
         .padding(.horizontal, 22)
         .padding(.top, 30)

@@ -33,9 +33,12 @@ enum SelfTest {
         }
 
         try testConfigurationRoundTrip()
+        try testLegacySystemActionMigration()
         try testMalformedBindingIsolation()
         try testKeyboardEventPlan()
         try testShortcutCapture()
+        try testContinuousAppSwitcherNavigation()
+        try testGestureEmissionGate()
         try testRecognizerFamilies()
         try testEveryCatalogGesture()
     }
@@ -52,14 +55,46 @@ enum SelfTest {
             displayText: "⌥ Space"
         )
         let binding = GestureBinding(gestureID: .threeSwipeUp, action: .keyboardShortcut(shortcut))
+        let folderBinding = GestureBinding(
+            gestureID: .threeSwipeDown,
+            action: .openFolder(FolderTarget(displayName: "Downloads", path: "/tmp/Downloads"))
+        )
+        let systemBinding = GestureBinding(
+            gestureID: .fourSwipeLeft,
+            action: .systemAction(.missionControl)
+        )
         var settings = AppSettings()
         settings.swipeSensitivity = .high
 
-        try store.save(bindings: [binding], settings: settings)
+        let expectedBindings = [binding, folderBinding, systemBinding]
+        try store.save(bindings: expectedBindings, settings: settings)
         let loaded = store.load()
-        try require(loaded.bindings == [binding], "configuration binding round-trip failed")
+        try require(loaded.bindings == expectedBindings, "configuration binding round-trip failed")
         try require(loaded.settings == settings, "configuration settings round-trip failed")
         try require(loaded.discardedBindings == 0, "healthy binding was discarded")
+    }
+
+    private static func testLegacySystemActionMigration() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FlowpadSelfTest-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let store = ConfigurationStore(baseDirectory: temporaryDirectory)
+        let legacyBinding = GestureBinding(
+            gestureID: .threeSwipeRight,
+            action: .keyboardShortcut(KeyboardShortcut(
+                keyCode: 48,
+                modifiers: CGEventFlags.maskCommand.rawValue,
+                displayText: "⌘ Tab"
+            ))
+        )
+        try store.save(bindings: [legacyBinding], settings: .init())
+
+        let loaded = store.load()
+        try require(
+            loaded.bindings.first?.action == .systemAction(.switchApplication),
+            "saved Command-Tab did not migrate to the semantic app switcher"
+        )
     }
 
     private static func testMalformedBindingIsolation() throws {
@@ -105,13 +140,54 @@ enum SelfTest {
         let combinedPlan = ActionExecutor.eventPlan(for: optionCommandI)
         try require(combinedPlan.map(\.keyCode) == [58, 55, 34, 34, 55, 58], "modifier ordering is unstable")
         try require(combinedPlan.last?.flags.isEmpty == true, "modifier release leaked flags")
+
+        let commandTab = KeyboardShortcut(
+            keyCode: 48,
+            modifiers: CGEventFlags.maskCommand.rawValue,
+            displayText: "⌘ Tab"
+        )
+        try require(
+            SystemAction.inferred(from: commandTab) == .switchApplication,
+            "legacy Command-Tab did not migrate to Switch Application"
+        )
+        try require(
+            ActionExecutor.appSwitcherReleaseDelay == 1.0,
+            "app switcher release delay changed unexpectedly"
+        )
+        try require(
+            ActionExecutor.appSwitcherDirection(for: .multiSwipe(count: 2, direction: .right)) == .next,
+            "two-finger right swipe cannot advance the active app switcher"
+        )
+        try require(
+            ActionExecutor.appSwitcherDirection(for: .multiSwipe(count: 4, direction: .left)) == .previous,
+            "four-finger left swipe cannot reverse the active app switcher"
+        )
+        try require(
+            ActionExecutor.appSwitcherDirection(for: .multiSwipe(count: 3, direction: .up)) == nil,
+            "vertical swipe was incorrectly consumed by the app switcher"
+        )
+        try require(SystemAction.inferred(from: commandB) == nil, "ordinary Command shortcut migrated")
+
+        let commandBacktick = KeyboardShortcut(
+            keyCode: 50,
+            modifiers: CGEventFlags.maskCommand.rawValue,
+            displayText: "⌘ `"
+        )
+        try require(
+            SystemAction.inferred(from: commandBacktick) == nil,
+            "Command-backtick was incorrectly migrated to Switch Application"
+        )
     }
 
     private static func testShortcutCapture() throws {
+        try require(
+            ShortcutText.displayModifiers([.maskAlternate, .maskCommand]) == "⌥ ⌘",
+            "live modifier preview is unstable"
+        )
         var commandTab = ShortcutCaptureState()
         try require(
-            commandTab.handle(type: .flagsChanged, keyCode: 55, flags: .maskCommand) == .none,
-            "modifier press must not complete shortcut capture"
+            commandTab.handle(type: .flagsChanged, keyCode: 55, flags: .maskCommand) == .preview("⌘"),
+            "modifier press was not shown in the live preview"
         )
         try require(
             commandTab.handle(type: .keyDown, keyCode: 48, flags: .maskCommand) == .capture(
@@ -164,12 +240,46 @@ enum SelfTest {
         )
     }
 
+    private static func testGestureEmissionGate() throws {
+        var gate = GestureEmissionGate()
+        let restTap = GesturePattern.restTwoTap(.right)
+        try require(gate.shouldEmit(restTap, at: 10), "first gesture was incorrectly blocked")
+        try require(!gate.shouldEmit(restTap, at: 10.12), "120 ms duplicate was not blocked")
+        try require(!gate.shouldEmit(restTap, at: 10.50), "same physical gesture escaped cooldown")
+        try require(gate.shouldEmit(restTap, at: 10.65), "next deliberate gesture stayed blocked")
+
+        try require(
+            gate.shouldEmit(.multiSwipe(count: 3, direction: .left), at: 10.20),
+            "one gesture incorrectly blocked a different pattern"
+        )
+    }
+
+    private static func testContinuousAppSwitcherNavigation() throws {
+        var stepper = ContinuousSwipeStepper(stepDistance: 0.05)
+        try require(stepper.update(x: 0.30) == 0, "app switcher scrubber lacks an anchor")
+        try require(stepper.update(x: 0.34) == 0, "app switcher scrubber advanced too early")
+        try require(stepper.update(x: 0.41) == 2, "continuous right swipe did not cross two icons")
+        try require(stepper.update(x: 0.34) == -1, "continuous reversal did not move left")
+        try require(stepper.update(x: 0.19) == -3, "long continuous swipe did not traverse multiple icons")
+    }
+
     private static func testRecognizerFamilies() throws {
         let cornerTap = GestureEngine.classifyForTesting(frames: [
             frame(0, [contact(1, 0.05, 0.95)]),
             frame(0.12, [contact(1, 0.052, 0.949)])
         ])
         try require(cornerTap == .cornerTap(.topLeft), "corner tap recognition failed")
+
+        let twoSwipe = GestureEngine.classifyLiveForTesting(frames: [
+            frame(0, [contact(1, 0.30, 0.45), contact(2, 0.55, 0.45)]),
+            frame(0.03, [contact(1, 0.30, 0.45), contact(2, 0.55, 0.45)]),
+            frame(0.07, [contact(1, 0.35, 0.45), contact(2, 0.60, 0.45)]),
+            frame(0.10, [contact(1, 0.41, 0.45), contact(2, 0.66, 0.45)])
+        ])
+        try require(
+            twoSwipe == .multiSwipe(count: 2, direction: .right),
+            "two-finger app-switcher navigation swipe recognition failed"
+        )
 
         let threeSwipe = GestureEngine.classifyLiveForTesting(frames: [
             frame(0, [contact(1, 0.30, 0.25)]),

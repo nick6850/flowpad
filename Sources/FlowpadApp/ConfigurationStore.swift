@@ -32,8 +32,9 @@ final class ConfigurationStore {
         do {
             let data = try Data(contentsOf: configurationURL)
             let decoded = try decoder.decode(PersistedConfiguration.self, from: data)
-            let bindings = decoded.bindings.compactMap(\.value)
-            let discarded = decoded.bindings.count - bindings.count
+            let decodedBindings = decoded.bindings.compactMap(\.value)
+            let discarded = decoded.bindings.count - decodedBindings.count
+            let bindings = deduplicated(decodedBindings).map(migratingLegacySystemAction)
 
             if decoded.schemaVersion > Self.schemaVersion {
                 return ConfigurationLoadResult(
@@ -49,7 +50,7 @@ final class ConfigurationStore {
             }
 
             return ConfigurationLoadResult(
-                bindings: deduplicated(bindings),
+                bindings: bindings,
                 settings: decoded.settings,
                 discardedBindings: discarded,
                 message: discarded == 0 ? nil : "Ignored \(discarded) invalid binding(s); the rest were loaded."
@@ -87,6 +88,15 @@ final class ConfigurationStore {
     private func deduplicated(_ bindings: [GestureBinding]) -> [GestureBinding] {
         var seen = Set<GestureID>()
         return bindings.filter { seen.insert($0.gestureID).inserted }
+    }
+
+    private func migratingLegacySystemAction(_ binding: GestureBinding) -> GestureBinding {
+        guard case let .keyboardShortcut(shortcut) = binding.action,
+              let systemAction = SystemAction.inferred(from: shortcut)
+        else { return binding }
+        var migrated = binding
+        migrated.action = .systemAction(systemAction)
+        return migrated
     }
 
     private func quarantine(data: Data, label: String) throws {

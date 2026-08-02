@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
 
     func stop() {
         gestureEngine.stop()
+        executor.stop()
     }
 
     func binding(for gestureID: GestureID) -> GestureBinding? {
@@ -106,7 +107,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func handleRecognized(_ gestureID: GestureID) {
+    func handleRecognized(_ pattern: GesturePattern) {
+        if executor.advanceAppSwitcherIfActive(for: pattern) { return }
+        guard let definition = GestureCatalog.all.first(where: { $0.pattern == pattern }) else { return }
+        let gestureID = definition.id
         lastDetectedGesture = gestureID
         guard settings.gesturesEnabled,
               let binding = bindings.first(where: { $0.gestureID == gestureID && $0.enabled })

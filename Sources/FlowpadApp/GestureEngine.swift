@@ -30,14 +30,57 @@ private struct GestureSession: Sendable {
     var physicalClick = false
     var forceTouch = false
     var consumed = false
+    var appSwitcherStepper = ContinuousSwipeStepper()
 
     var maxTouches: Int { frames.map(\.contacts.count).max() ?? 0 }
     var startTime: TimeInterval { frames.first?.timestamp ?? 0 }
     var endTime: TimeInterval { frames.last?.timestamp ?? startTime }
 }
 
+struct ContinuousSwipeStepper: Sendable {
+    static let defaultStepDistance = 0.055
+
+    private var anchorX: Double?
+    private let stepDistance: Double
+
+    init(stepDistance: Double = Self.defaultStepDistance) {
+        self.stepDistance = stepDistance
+    }
+
+    mutating func update(x: Double) -> Int {
+        guard let anchorX else {
+            self.anchorX = x
+            return 0
+        }
+        let steps = Int((x - anchorX) / stepDistance)
+        guard steps != 0 else { return 0 }
+        self.anchorX = anchorX + Double(steps) * stepDistance
+        return steps
+    }
+}
+
+struct GestureEmissionGate {
+    static let defaultCooldown: TimeInterval = 0.65
+
+    private var lastEmissionByPattern: [GesturePattern: TimeInterval] = [:]
+    private let cooldown: TimeInterval
+
+    init(cooldown: TimeInterval = Self.defaultCooldown) {
+        self.cooldown = cooldown
+    }
+
+    mutating func shouldEmit(_ pattern: GesturePattern, at timestamp: TimeInterval) -> Bool {
+        if let previous = lastEmissionByPattern[pattern], timestamp - previous < cooldown {
+            return false
+        }
+        lastEmissionByPattern[pattern] = timestamp
+        return true
+    }
+}
+
 final class GestureEngine: @unchecked Sendable {
     private weak var model: AppModel?
+    private let executor: ActionExecutor?
     private let bridge = MultitouchBridge()
     private let queue = DispatchQueue(label: "app.flowpad.gesture-engine", qos: .userInteractive)
     private var session: GestureSession?
@@ -45,16 +88,17 @@ final class GestureEngine: @unchecked Sendable {
     private var clickMonitor: Any?
     private var pressureMonitor: Any?
     private var silenceGeneration = 0
-    private var lastRecognitionTime: TimeInterval = 0
-    private var lastRecognitionPattern: GesturePattern?
+    private var emissionGate = GestureEmissionGate()
 
     @MainActor
     init(model: AppModel) {
         self.model = model
+        executor = model.executor
         settings = model.settings
     }
 
     private init(testingSettings: AppSettings) {
+        executor = nil
         settings = testingSettings
     }
 
@@ -165,6 +209,12 @@ final class GestureEngine: @unchecked Sendable {
         let previousCount = session?.frames.last?.contacts.count ?? 0
         session?.frames.append(SessionFrame(timestamp: frame.timestamp, contacts: contacts))
 
+        // The native app switcher behaves like a scrubber: while Command is
+        // held, one continuous horizontal movement can cross many icons. This
+        // path intentionally bypasses normal gesture bindings until the
+        // switcher accepts its selection.
+        if handleContinuousAppSwitcherNavigation(contacts) { return }
+
         // Keep a long resting finger cheap without losing the recent motion that
         // compound gestures need.
         if session?.frames.count ?? 0 > 1_800 {
@@ -176,6 +226,22 @@ final class GestureEngine: @unchecked Sendable {
         else { return }
         emit(pattern)
         session?.consumed = true
+    }
+
+    private func handleContinuousAppSwitcherNavigation(_ contacts: [Int: TouchContact]) -> Bool {
+        guard let executor, executor.isAppSwitcherActive else { return false }
+        session?.consumed = true
+        guard (2...5).contains(contacts.count),
+              let x = centroid(SessionFrame(timestamp: 0, contacts: contacts))?.x
+        else { return true }
+
+        let steps = session?.appSwitcherStepper.update(x: x) ?? 0
+        guard steps != 0 else { return true }
+        let direction: AppSwitcherDirection = steps > 0 ? .next : .previous
+        for _ in 0..<abs(steps) {
+            guard executor.advanceAppSwitcherIfActive(direction) else { break }
+        }
+        return true
     }
 
     private func finishAfterSilence(_ generation: Int) {
@@ -194,16 +260,12 @@ final class GestureEngine: @unchecked Sendable {
     }
 
     private func emit(_ pattern: GesturePattern) {
-        guard settings.gesturesEnabled,
-              let definition = GestureCatalog.all.first(where: { $0.pattern == pattern })
-        else { return }
+        guard settings.gesturesEnabled else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
-        if lastRecognitionPattern == pattern, now - lastRecognitionTime < 0.12 { return }
-        lastRecognitionTime = now
-        lastRecognitionPattern = pattern
+        guard emissionGate.shouldEmit(pattern, at: now) else { return }
         Task { @MainActor [weak model] in
-            model?.handleRecognized(definition.id)
+            model?.handleRecognized(pattern)
         }
     }
 
@@ -250,7 +312,7 @@ final class GestureEngine: @unchecked Sendable {
             return .edgeSwipeLeft
         }
 
-        if [3, 4].contains(currentCount),
+        if (2...5).contains(currentCount),
            let direction = coherentSwipeDirection(session, count: currentCount) {
             return .multiSwipe(count: currentCount, direction: direction)
         }
@@ -282,7 +344,7 @@ final class GestureEngine: @unchecked Sendable {
            coherentSwipeDirection(session, count: 2, useLongestRun: true) == .right {
             return .edgeSwipeLeft
         }
-        if [3, 4].contains(count),
+        if (2...5).contains(count),
            let direction = coherentSwipeDirection(session, count: count, useLongestRun: true) {
             return .multiSwipe(count: count, direction: direction)
         }

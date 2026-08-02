@@ -210,11 +210,29 @@ struct GestureEditorSheet: View {
         displayText: "⌥ Space"
     )
     @State private var application: ApplicationTarget?
+    @State private var folder: FolderTarget?
 
     enum ActionKind: String, CaseIterable, Identifiable {
         case keyboardShortcut = "Keyboard Shortcut"
         case launchApplication = "Launch Application"
+        case openFolder = "Open Folder"
+        case playPause = "Play/Pause"
+        case switchApplication = "Switch Application"
+        case missionControl = "Mission Control"
+        case screenCapture = "Screen Capture"
+        case launchpad = "Launchpad"
         var id: String { rawValue }
+
+        var systemAction: SystemAction? {
+            switch self {
+            case .playPause: .playPause
+            case .switchApplication: .switchApplication
+            case .missionControl: .missionControl
+            case .screenCapture: .screenCapture
+            case .launchpad: .launchpad
+            case .keyboardShortcut, .launchApplication, .openFolder: nil
+            }
+        }
     }
 
     init(initialGesture: GestureDefinition) {
@@ -229,7 +247,14 @@ struct GestureEditorSheet: View {
     }
 
     private var canSave: Bool {
-        actionKind == .keyboardShortcut || application != nil
+        switch actionKind {
+        case .keyboardShortcut, .playPause, .switchApplication, .missionControl, .screenCapture, .launchpad:
+            true
+        case .launchApplication:
+            application != nil
+        case .openFolder:
+            folder != nil
+        }
     }
 
     var body: some View {
@@ -370,6 +395,35 @@ struct GestureEditorSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Button("Choose Application…", action: chooseApplication)
+            case .openFolder:
+                if let folder {
+                    HStack(spacing: 10) {
+                        Image(systemName: "folder.fill")
+                            .font(.title2)
+                            .foregroundStyle(.blue)
+                            .frame(width: 32, height: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(folder.displayName).fontWeight(.medium)
+                            Text(folder.path)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                } else {
+                    Text("No folder selected")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Choose Folder…", action: chooseFolder)
+            case .playPause, .switchApplication, .missionControl, .screenCapture, .launchpad:
+                if let action = actionKind.systemAction {
+                    Label(action.title, systemImage: action.symbol)
+                        .font(.headline)
+                    Text(systemActionDescription(action))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Spacer()
@@ -386,6 +440,17 @@ struct GestureEditorSheet: View {
         case let .launchApplication(value):
             actionKind = .launchApplication
             application = value
+        case let .openFolder(value):
+            actionKind = .openFolder
+            folder = value
+        case let .systemAction(value):
+            actionKind = switch value {
+            case .playPause: .playPause
+            case .switchApplication: .switchApplication
+            case .missionControl: .missionControl
+            case .screenCapture: .screenCapture
+            case .launchpad: .launchpad
+            }
         }
     }
 
@@ -407,6 +472,35 @@ struct GestureEditorSheet: View {
         )
     }
 
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a Folder"
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        folder = FolderTarget(
+            displayName: FileManager.default.displayName(atPath: url.path),
+            path: url.path
+        )
+    }
+
+    private func systemActionDescription(_ action: SystemAction) -> String {
+        switch action {
+        case .playPause:
+            "Controls the active media player with the native media key."
+        case .switchApplication:
+            "Opens the native app switcher. Repeat the gesture to move through apps."
+        case .missionControl:
+            "Shows all open windows and Spaces using Mission Control."
+        case .screenCapture:
+            "Opens the macOS Screenshot controls."
+        case .launchpad:
+            "Shows Apps on macOS 26 or Launchpad on earlier macOS versions."
+        }
+    }
+
     private func save() {
         let action: BindingAction
         switch actionKind {
@@ -415,6 +509,12 @@ struct GestureEditorSheet: View {
         case .launchApplication:
             guard let application else { return }
             action = .launchApplication(application)
+        case .openFolder:
+            guard let folder else { return }
+            action = .openFolder(folder)
+        case .playPause, .switchApplication, .missionControl, .screenCapture, .launchpad:
+            guard let systemAction = actionKind.systemAction else { return }
+            action = .systemAction(systemAction)
         }
         model.setBinding(gestureID: selectedGesture.id, action: action)
         dismiss()
@@ -446,6 +546,7 @@ private final class ShortcutRecorderControl: NSView {
     }
     var onChange: ((KeyboardShortcut) -> Void)?
     private var recording = false
+    private var liveDisplayText: String?
     private var eventInterceptor: ShortcutEventInterceptor?
 
     override var acceptsFirstResponder: Bool { true }
@@ -483,6 +584,7 @@ private final class ShortcutRecorderControl: NSView {
     private func beginRecording() {
         stopRecording()
         recording = true
+        liveDisplayText = nil
         needsDisplay = true
 
         let interceptor = ShortcutEventInterceptor { [weak self] update in
@@ -498,8 +600,12 @@ private final class ShortcutRecorderControl: NSView {
         switch update {
         case .none:
             break
+        case let .preview(text):
+            liveDisplayText = text.isEmpty ? nil : text
+            needsDisplay = true
         case let .capture(value):
             shortcut = value
+            liveDisplayText = value.displayText
             onChange?(value)
         case .cancel:
             break
@@ -533,7 +639,7 @@ private final class ShortcutRecorderControl: NSView {
         path.lineWidth = 1
         path.stroke()
 
-        let text = recording ? "Press shortcut…" : shortcut.displayText
+        let text = recording ? (liveDisplayText ?? "Press shortcut…") : shortcut.displayText
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .medium),
             .foregroundColor: NSColor.labelColor
@@ -559,6 +665,7 @@ private final class ShortcutRecorderControl: NSView {
 
 enum ShortcutCaptureUpdate: Equatable {
     case none
+    case preview(String)
     case capture(KeyboardShortcut)
     case cancel
     case finish
@@ -592,7 +699,9 @@ struct ShortcutCaptureState {
             return shouldFinish(modifiers: modifiers) ? .finish : .none
 
         case .flagsChanged:
-            return shouldFinish(modifiers: modifiers) ? .finish : .none
+            if shouldFinish(modifiers: modifiers) { return .finish }
+            if !capturedKey { return .preview(ShortcutText.displayModifiers(modifiers)) }
+            return .none
 
         default:
             return .none
@@ -626,11 +735,17 @@ private final class ShortcutEventInterceptor: @unchecked Sendable {
     }
 
     func start() -> Bool {
-        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-            | CGEventMask(1 << CGEventType.keyUp.rawValue)
-            | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let keyDownMask = CGEventMask(1) << CGEventType.keyDown.rawValue
+        let keyUpMask = CGEventMask(1) << CGEventType.keyUp.rawValue
+        let flagsChangedMask = CGEventMask(1) << CGEventType.flagsChanged.rawValue
+        // kCGEventSystemDefined is raw event type 14; CoreGraphics does not
+        // expose a Swift enum case for it.
+        let systemDefinedMask = CGEventMask(1) << 14
+        let mask = keyDownMask | keyUpMask | flagsChangedMask | systemDefinedMask
         guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
+            // HID-level capture sees physical keyboards and virtual keyboards
+            // created by device software such as Logi Options+.
+            tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,

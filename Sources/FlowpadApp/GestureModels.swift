@@ -101,14 +101,61 @@ struct ApplicationTarget: Codable, Hashable {
     var path: String
 }
 
+struct FolderTarget: Codable, Hashable {
+    var displayName: String
+    var path: String
+}
+
+enum SystemAction: String, Codable, Hashable, CaseIterable, Identifiable {
+    case playPause
+    case switchApplication
+    case missionControl
+    case screenCapture
+    case launchpad
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .playPause: "Play/Pause"
+        case .switchApplication: "Switch Application"
+        case .missionControl: "Mission Control"
+        case .screenCapture: "Screen Capture"
+        case .launchpad: "Launchpad"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .playPause: "playpause.fill"
+        case .switchApplication: "macwindow.on.rectangle"
+        case .missionControl: "rectangle.3.group"
+        case .screenCapture: "camera.viewfinder"
+        case .launchpad: "square.grid.3x3.fill"
+        }
+    }
+
+    static func inferred(from shortcut: KeyboardShortcut) -> SystemAction? {
+        let flags = shortcut.eventFlags
+        guard shortcut.keyCode == 48,
+              flags == .maskCommand
+        else { return nil }
+        return .switchApplication
+    }
+}
+
 enum BindingAction: Codable, Hashable {
     case keyboardShortcut(KeyboardShortcut)
     case launchApplication(ApplicationTarget)
+    case openFolder(FolderTarget)
+    case systemAction(SystemAction)
 
     var kindTitle: String {
         switch self {
         case .keyboardShortcut: "Keyboard Shortcut"
         case .launchApplication: "Launch Application"
+        case .openFolder: "Open Folder"
+        case .systemAction: "System Action"
         }
     }
 
@@ -116,6 +163,8 @@ enum BindingAction: Codable, Hashable {
         switch self {
         case let .keyboardShortcut(shortcut): shortcut.displayText
         case let .launchApplication(application): application.displayName
+        case let .openFolder(folder): folder.displayName
+        case let .systemAction(action): action.title
         }
     }
 }
