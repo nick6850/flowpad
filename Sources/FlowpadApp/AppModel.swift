@@ -105,6 +105,9 @@ final class AppModel: ObservableObject {
         if previous.showMenuBarIcon != settings.showMenuBarIcon {
             NotificationCenter.default.post(name: .flowpadMenuBarVisibilityChanged, object: nil)
         }
+        if previous.showDockIcon != settings.showDockIcon {
+            NotificationCenter.default.post(name: .flowpadDockVisibilityChanged, object: nil)
+        }
     }
 
     func handleRecognized(_ pattern: GesturePattern) {
@@ -147,4 +150,5 @@ final class AppModel: ObservableObject {
 
 extension Notification.Name {
     static let flowpadMenuBarVisibilityChanged = Notification.Name("FlowpadMenuBarVisibilityChanged")
+    static let flowpadDockVisibilityChanged = Notification.Name("FlowpadDockVisibilityChanged")
 }

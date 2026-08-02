@@ -203,11 +203,47 @@ enum Sensitivity: String, Codable, CaseIterable, Identifiable {
 }
 
 struct AppSettings: Codable, Equatable {
-    var gesturesEnabled = true
-    var launchAtLogin = false
-    var showMenuBarIcon = true
-    var touchPrecision: Sensitivity = .medium
-    var swipeSensitivity: Sensitivity = .medium
+    var gesturesEnabled: Bool
+    var launchAtLogin: Bool
+    var showMenuBarIcon: Bool
+    var showDockIcon: Bool
+    var touchPrecision: Sensitivity
+    var swipeSensitivity: Sensitivity
+
+    init(
+        gesturesEnabled: Bool = true,
+        launchAtLogin: Bool = false,
+        showMenuBarIcon: Bool = true,
+        showDockIcon: Bool = false,
+        touchPrecision: Sensitivity = .medium,
+        swipeSensitivity: Sensitivity = .medium
+    ) {
+        self.gesturesEnabled = gesturesEnabled
+        self.launchAtLogin = launchAtLogin
+        self.showMenuBarIcon = showMenuBarIcon
+        self.showDockIcon = showDockIcon
+        self.touchPrecision = touchPrecision
+        self.swipeSensitivity = swipeSensitivity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case gesturesEnabled
+        case launchAtLogin
+        case showMenuBarIcon
+        case showDockIcon
+        case touchPrecision
+        case swipeSensitivity
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        gesturesEnabled = try container.decodeIfPresent(Bool.self, forKey: .gesturesEnabled) ?? true
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        showMenuBarIcon = try container.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? true
+        showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? false
+        touchPrecision = try container.decodeIfPresent(Sensitivity.self, forKey: .touchPrecision) ?? .medium
+        swipeSensitivity = try container.decodeIfPresent(Sensitivity.self, forKey: .swipeSensitivity) ?? .medium
+    }
 }
 
 struct PersistedConfiguration: Codable {

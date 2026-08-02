@@ -30,13 +30,6 @@ struct SettingsView: View {
             SurfaceCard {
                 SettingsSection(title: "General", symbol: "switch.2") {
                     HStack(spacing: 0) {
-                        settingToggle("Enable gestures", value: Binding(
-                            get: { model.settings.gesturesEnabled },
-                            set: { value in model.updateSettings { $0.gesturesEnabled = value } }
-                        ))
-
-                        verticalDivider
-
                         settingToggle("Launch at login", value: Binding(
                             get: { model.settings.launchAtLogin },
                             set: { value in model.updateSettings { $0.launchAtLogin = value } }
@@ -47,6 +40,13 @@ struct SettingsView: View {
                         settingToggle("Show in menu bar", value: Binding(
                             get: { model.settings.showMenuBarIcon },
                             set: { value in model.updateSettings { $0.showMenuBarIcon = value } }
+                        ))
+
+                        verticalDivider
+
+                        settingToggle("Show in Dock", value: Binding(
+                            get: { model.settings.showDockIcon },
+                            set: { value in model.updateSettings { $0.showDockIcon = value } }
                         ))
                     }
                     .padding(.top, 5)

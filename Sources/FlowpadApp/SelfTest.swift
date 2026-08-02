@@ -33,6 +33,7 @@ enum SelfTest {
         }
 
         try testConfigurationRoundTrip()
+        try testLegacySettingsMigration()
         try testLegacySystemActionMigration()
         try testMalformedBindingIsolation()
         try testKeyboardEventPlan()
@@ -95,6 +96,39 @@ enum SelfTest {
             loaded.bindings.first?.action == .systemAction(.switchApplication),
             "saved Command-Tab did not migrate to the semantic app switcher"
         )
+    }
+
+    private static func testLegacySettingsMigration() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FlowpadSelfTest-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let store = ConfigurationStore(baseDirectory: temporaryDirectory)
+        try store.save(
+            bindings: [],
+            settings: AppSettings(
+                launchAtLogin: true,
+                showMenuBarIcon: true,
+                showDockIcon: true,
+                touchPrecision: .high,
+                swipeSensitivity: .low
+            )
+        )
+
+        let data = try Data(contentsOf: store.configurationURL)
+        guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var settings = root["settings"] as? [String: Any]
+        else { throw SelfTestError.failed("could not prepare legacy settings fixture") }
+        settings.removeValue(forKey: "showDockIcon")
+        root["settings"] = settings
+        try JSONSerialization.data(withJSONObject: root)
+            .write(to: store.configurationURL, options: .atomic)
+
+        let loaded = store.load()
+        try require(!loaded.settings.showDockIcon, "legacy settings did not default to a hidden Dock icon")
+        try require(loaded.settings.launchAtLogin, "legacy launch-at-login setting was lost")
+        try require(loaded.settings.touchPrecision == .high, "legacy recognition setting was lost")
+        try require(loaded.settings.swipeSensitivity == .low, "legacy swipe setting was lost")
     }
 
     private static func testMalformedBindingIsolation() throws {

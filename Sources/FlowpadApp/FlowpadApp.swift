@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static weak var current: AppDelegate?
     private var statusItem: NSStatusItem?
     private var observer: NSObjectProtocol?
+    private var dockObserver: NSObjectProtocol?
     private var fallbackWindow: NSWindow?
 
     override init() {
@@ -62,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        NSApp.setActivationPolicy(.regular)
+        updateActivationPolicy()
         AppModel.shared.start()
         updateStatusItem()
         DispatchQueue.main.async {
@@ -75,11 +76,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in self?.updateStatusItem() }
         }
+        dockObserver = NotificationCenter.default.addObserver(
+            forName: .flowpadDockVisibilityChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.updateActivationPolicy() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         AppModel.shared.stop()
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let dockObserver { NotificationCenter.default.removeObserver(dockObserver) }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -143,6 +152,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil
+        }
+    }
+
+    private func updateActivationPolicy() {
+        let showDockIcon = AppModel.shared.settings.showDockIcon
+        NSApp.setActivationPolicy(showDockIcon ? .regular : .accessory)
+        if showDockIcon {
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
