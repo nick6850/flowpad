@@ -110,6 +110,7 @@ struct TrackpadView: View {
             .padding(.trailing, 16)
             .padding(.bottom, 2)
         }
+        .padding(.trailing, 12)
     }
 }
 
