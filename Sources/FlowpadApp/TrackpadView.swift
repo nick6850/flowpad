@@ -216,6 +216,7 @@ struct GestureEditorSheet: View {
     @State private var folder: FolderTarget?
 
     enum ActionKind: String, CaseIterable, Identifiable {
+        case nothing = "Nothing"
         case keyboardShortcut = "Keyboard Shortcut"
         case launchApplication = "Launch Application"
         case openFolder = "Open Folder"
@@ -233,7 +234,7 @@ struct GestureEditorSheet: View {
             case .missionControl: .missionControl
             case .screenCapture: .screenCapture
             case .launchpad: .launchpad
-            case .keyboardShortcut, .launchApplication, .openFolder: nil
+            case .nothing, .keyboardShortcut, .launchApplication, .openFolder: nil
             }
         }
     }
@@ -251,7 +252,7 @@ struct GestureEditorSheet: View {
 
     private var canSave: Bool {
         switch actionKind {
-        case .keyboardShortcut, .playPause, .switchApplication, .missionControl, .screenCapture, .launchpad:
+        case .nothing, .keyboardShortcut, .playPause, .switchApplication, .missionControl, .screenCapture, .launchpad:
             true
         case .launchApplication:
             application != nil
@@ -298,25 +299,28 @@ struct GestureEditorSheet: View {
             TextField("Search gesture library", text: $searchText)
                 .textFieldStyle(.roundedBorder)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
-                    ForEach(GestureCategory.allCases) { category in
-                        Button {
-                            selectedCategory = category
-                            if let first = GestureCatalog.definitions(in: category).first { selectedGesture = first }
-                        } label: {
-                            Text(category.rawValue)
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    Capsule().fill(selectedCategory == category
-                                        ? Color(nsColor: category.color).opacity(0.28)
-                                        : Color.white.opacity(0.05))
-                                )
-                        }
-                        .buttonStyle(.plain)
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 7), count: 3),
+                spacing: 7
+            ) {
+                ForEach(GestureCategory.allCases) { category in
+                    Button {
+                        selectedCategory = category
+                        if let first = GestureCatalog.definitions(in: category).first { selectedGesture = first }
+                    } label: {
+                        Text(category.rawValue)
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                Capsule().fill(selectedCategory == category
+                                    ? Color(nsColor: category.color).opacity(0.28)
+                                    : Color.white.opacity(0.05))
+                            )
                     }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -376,6 +380,13 @@ struct GestureEditorSheet: View {
             Divider()
 
             switch actionKind {
+            case .nothing:
+                Label("Remove this gesture action", systemImage: "trash")
+                    .font(.headline)
+                Text("Saving will remove the configured action for this gesture.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             case .keyboardShortcut:
                 Text("Click the field, then press the shortcut.")
                     .font(.caption)
@@ -505,8 +516,18 @@ struct GestureEditorSheet: View {
     }
 
     private func save() {
+        if actionKind == .nothing {
+            if let binding = model.binding(for: selectedGesture.id) {
+                model.removeBinding(binding.id)
+            }
+            dismiss()
+            return
+        }
+
         let action: BindingAction
         switch actionKind {
+        case .nothing:
+            return
         case .keyboardShortcut:
             action = .keyboardShortcut(shortcut)
         case .launchApplication:
