@@ -155,7 +155,6 @@ struct AppSettings: Codable, Equatable {
     var gesturesEnabled = true
     var launchAtLogin = false
     var showMenuBarIcon = true
-    var hapticFeedback = true
     var touchPrecision: Sensitivity = .medium
     var swipeSensitivity: Sensitivity = .medium
 }

@@ -434,6 +434,10 @@ private struct ShortcutRecorder: NSViewRepresentable {
     func updateNSView(_ nsView: ShortcutRecorderControl, context: Context) {
         nsView.shortcut = shortcut
     }
+
+    static func dismantleNSView(_ nsView: ShortcutRecorderControl, coordinator: ()) {
+        nsView.stopRecording()
+    }
 }
 
 private final class ShortcutRecorderControl: NSView {
@@ -442,24 +446,74 @@ private final class ShortcutRecorderControl: NSView {
     }
     var onChange: ((KeyboardShortcut) -> Void)?
     private var recording = false
+    private var eventInterceptor: ShortcutEventInterceptor?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        recording = true
-        needsDisplay = true
+        beginRecording()
     }
 
     override func resignFirstResponder() -> Bool {
-        recording = false
-        needsDisplay = true
+        stopRecording()
         return super.resignFirstResponder()
     }
 
     override func keyDown(with event: NSEvent) {
+        guard recording, eventInterceptor == nil else { return }
+        captureFallback(event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard recording, eventInterceptor == nil else {
+            return super.performKeyEquivalent(with: event)
+        }
+        captureFallback(event)
+        return true
+    }
+
+    func stopRecording() {
+        eventInterceptor?.stop()
+        eventInterceptor = nil
+        recording = false
+        needsDisplay = true
+    }
+
+    private func beginRecording() {
+        stopRecording()
+        recording = true
+        needsDisplay = true
+
+        let interceptor = ShortcutEventInterceptor { [weak self] update in
+            DispatchQueue.main.async { self?.apply(update) }
+        }
+        if interceptor.start() {
+            eventInterceptor = interceptor
+        }
+    }
+
+    private func apply(_ update: ShortcutCaptureUpdate) {
+        guard recording else { return }
+        switch update {
+        case .none:
+            break
+        case let .capture(value):
+            shortcut = value
+            onChange?(value)
+        case .cancel:
+            break
+        case .finish:
+            stopRecording()
+            if window?.firstResponder === self {
+                window?.makeFirstResponder(nil)
+            }
+        }
+    }
+
+    private func captureFallback(_ event: NSEvent) {
         if event.keyCode == 53 {
-            recording = false
+            stopRecording()
             window?.makeFirstResponder(nil)
             return
         }
@@ -467,7 +521,7 @@ private final class ShortcutRecorderControl: NSView {
         let flags = Self.cgFlags(for: event.modifierFlags)
         shortcut = KeyboardShortcut(keyCode: event.keyCode, modifiers: flags.rawValue, displayText: display)
         onChange?(shortcut)
-        recording = false
+        stopRecording()
         window?.makeFirstResponder(nil)
     }
 
@@ -500,5 +554,129 @@ private final class ShortcutRecorderControl: NSView {
         if flags.contains(.command) { result.insert(.maskCommand) }
         if flags.contains(.function) { result.insert(.maskSecondaryFn) }
         return result
+    }
+}
+
+enum ShortcutCaptureUpdate: Equatable {
+    case none
+    case capture(KeyboardShortcut)
+    case cancel
+    case finish
+}
+
+struct ShortcutCaptureState {
+    private(set) var capturedKey = false
+    private var pressedKeys: Set<CGKeyCode> = []
+
+    mutating func handle(
+        type: CGEventType,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags
+    ) -> ShortcutCaptureUpdate {
+        let modifiers = Self.recordableFlags(flags)
+
+        switch type {
+        case .keyDown:
+            pressedKeys.insert(keyCode)
+            guard !capturedKey else { return .none }
+            capturedKey = true
+            if keyCode == 53 { return .cancel }
+            return .capture(KeyboardShortcut(
+                keyCode: keyCode,
+                modifiers: modifiers.rawValue,
+                displayText: ShortcutText.display(keyCode: keyCode, flags: modifiers)
+            ))
+
+        case .keyUp:
+            pressedKeys.remove(keyCode)
+            return shouldFinish(modifiers: modifiers) ? .finish : .none
+
+        case .flagsChanged:
+            return shouldFinish(modifiers: modifiers) ? .finish : .none
+
+        default:
+            return .none
+        }
+    }
+
+    static func recordableFlags(_ flags: CGEventFlags) -> CGEventFlags {
+        var result: CGEventFlags = []
+        if flags.contains(.maskControl) { result.insert(.maskControl) }
+        if flags.contains(.maskAlternate) { result.insert(.maskAlternate) }
+        if flags.contains(.maskShift) { result.insert(.maskShift) }
+        if flags.contains(.maskCommand) { result.insert(.maskCommand) }
+        if flags.contains(.maskSecondaryFn) { result.insert(.maskSecondaryFn) }
+        return result
+    }
+
+    private func shouldFinish(modifiers: CGEventFlags) -> Bool {
+        capturedKey && pressedKeys.isEmpty && modifiers.isEmpty
+    }
+}
+
+private final class ShortcutEventInterceptor: @unchecked Sendable {
+    private let onUpdate: @Sendable (ShortcutCaptureUpdate) -> Void
+    private let lock = NSLock()
+    private var state = ShortcutCaptureState()
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+
+    init(onUpdate: @escaping @Sendable (ShortcutCaptureUpdate) -> Void) {
+        self.onUpdate = onUpdate
+    }
+
+    func start() -> Bool {
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.keyUp.rawValue)
+            | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: Self.callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else { return false }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        eventTap = tap
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    func stop() {
+        if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+        if let eventTap { CFMachPortInvalidate(eventTap) }
+        runLoopSource = nil
+        eventTap = nil
+    }
+
+    private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else { return Unmanaged.passUnretained(event) }
+        let interceptor = Unmanaged<ShortcutEventInterceptor>.fromOpaque(userInfo).takeUnretainedValue()
+
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap = interceptor.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        interceptor.lock.lock()
+        let update = interceptor.state.handle(type: type, keyCode: keyCode, flags: event.flags)
+        interceptor.lock.unlock()
+        if update != .none { interceptor.onUpdate(update) }
+
+        // A nil event stops it before Dock, Mission Control, menus, or the
+        // foreground application can act on the shortcut being recorded.
+        return nil
+    }
+
+    deinit {
+        stop()
     }
 }

@@ -15,7 +15,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                settingsGrid
+                settingsStack
             }
             .padding(24)
         }
@@ -25,8 +25,8 @@ struct SettingsView: View {
         }
     }
 
-    private var settingsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+    private var settingsStack: some View {
+        VStack(spacing: 16) {
             SurfaceCard {
                 SettingsSection(title: "General", symbol: "switch.2") {
                     settingToggle("Enable gestures", value: Binding(
@@ -43,18 +43,6 @@ struct SettingsView: View {
                         get: { model.settings.showMenuBarIcon },
                         set: { value in model.updateSettings { $0.showMenuBarIcon = value } }
                     ))
-                }
-            }
-
-            SurfaceCard {
-                SettingsSection(title: "Feedback", symbol: "waveform") {
-                    settingToggle("Haptic feedback", value: Binding(
-                        get: { model.settings.hapticFeedback },
-                        set: { value in model.updateSettings { $0.hapticFeedback = value } }
-                    ))
-                    Text("A subtle confirmation after a gesture runs.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -92,7 +80,6 @@ struct SettingsView: View {
                     .buttonStyle(.bordered)
                 }
             }
-
         }
     }
 

@@ -15,16 +15,12 @@ final class ActionExecutor: @unchecked Sendable {
         qos: .userInteractive
     )
 
-    func execute(_ action: BindingAction, hapticFeedback: Bool) {
+    func execute(_ action: BindingAction) {
         switch action {
         case let .keyboardShortcut(shortcut):
             execute(shortcut)
         case let .launchApplication(target):
             launch(target)
-        }
-
-        if hapticFeedback {
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
     }
 

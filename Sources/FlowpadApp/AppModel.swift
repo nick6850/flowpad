@@ -111,7 +111,7 @@ final class AppModel: ObservableObject {
         guard settings.gesturesEnabled,
               let binding = bindings.first(where: { $0.gestureID == gestureID && $0.enabled })
         else { return }
-        executor.execute(binding.action, hapticFeedback: settings.hapticFeedback)
+        executor.execute(binding.action)
     }
 
     func updateEngineStatus(available: Bool, message: String) {

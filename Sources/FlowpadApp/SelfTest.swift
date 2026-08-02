@@ -35,6 +35,7 @@ enum SelfTest {
         try testConfigurationRoundTrip()
         try testMalformedBindingIsolation()
         try testKeyboardEventPlan()
+        try testShortcutCapture()
         try testRecognizerFamilies()
         try testEveryCatalogGesture()
     }
@@ -104,6 +105,63 @@ enum SelfTest {
         let combinedPlan = ActionExecutor.eventPlan(for: optionCommandI)
         try require(combinedPlan.map(\.keyCode) == [58, 55, 34, 34, 55, 58], "modifier ordering is unstable")
         try require(combinedPlan.last?.flags.isEmpty == true, "modifier release leaked flags")
+    }
+
+    private static func testShortcutCapture() throws {
+        var commandTab = ShortcutCaptureState()
+        try require(
+            commandTab.handle(type: .flagsChanged, keyCode: 55, flags: .maskCommand) == .none,
+            "modifier press must not complete shortcut capture"
+        )
+        try require(
+            commandTab.handle(type: .keyDown, keyCode: 48, flags: .maskCommand) == .capture(
+                KeyboardShortcut(
+                    keyCode: 48,
+                    modifiers: CGEventFlags.maskCommand.rawValue,
+                    displayText: "⌘ Tab"
+                )
+            ),
+            "Command-Tab was not captured"
+        )
+        try require(
+            commandTab.handle(type: .keyUp, keyCode: 48, flags: .maskCommand) == .none,
+            "recorder stopped before Command was released"
+        )
+        try require(
+            commandTab.handle(type: .flagsChanged, keyCode: 55, flags: []) == .finish,
+            "recorder did not stop after all keys were released"
+        )
+
+        var commandBacktick = ShortcutCaptureState()
+        _ = commandBacktick.handle(type: .flagsChanged, keyCode: 55, flags: .maskCommand)
+        try require(
+            commandBacktick.handle(type: .keyDown, keyCode: 50, flags: .maskCommand) == .capture(
+                KeyboardShortcut(
+                    keyCode: 50,
+                    modifiers: CGEventFlags.maskCommand.rawValue,
+                    displayText: "⌘ `"
+                )
+            ),
+            "Command-backtick was not captured"
+        )
+        try require(
+            commandBacktick.handle(type: .keyUp, keyCode: 50, flags: .maskCommand) == .none,
+            "Command-backtick stopped before Command was released"
+        )
+        try require(
+            commandBacktick.handle(type: .flagsChanged, keyCode: 55, flags: []) == .finish,
+            "Command-backtick did not release the recorder"
+        )
+
+        var escape = ShortcutCaptureState()
+        try require(
+            escape.handle(type: .keyDown, keyCode: 53, flags: []) == .cancel,
+            "Escape must cancel shortcut recording"
+        )
+        try require(
+            escape.handle(type: .keyUp, keyCode: 53, flags: []) == .finish,
+            "Escape cancellation did not release the recorder"
+        )
     }
 
     private static func testRecognizerFamilies() throws {
